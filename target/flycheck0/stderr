@@ -1,0 +1,5 @@
+warning: /Users/zhangjiadi/vscode/dmpf-master/Cargo.toml: unused manifest key: build
+error: failed to parse manifest at `/Users/zhangjiadi/vscode/dmpf-master/Cargo.toml`
+
+Caused by:
+  can't find `batch_code` bench at `benches/batch_code.rs` or `benches/batch_code/main.rs`. Please specify bench.path if you want to use a non-default path.
