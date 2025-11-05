@@ -7,7 +7,6 @@ use std::path::Path;
 use std::time::Instant;
 use std::collections::HashSet;
  
-// PSI协议相关结构体
 struct PsiProtocolSetup<const W: usize, Output: DpfOutput> {
     pub dmpf: OkvsDmpf<1, W, Output>,
     pub input_len: usize,
@@ -25,67 +24,54 @@ impl<const W: usize, Output: DpfOutput> PsiProtocolSetup<W, Output> {
     }
 }
  
-// 加法秘密分享
 fn additive_secret_share(x: u128, rng: &mut (impl RngCore + CryptoRng)) -> (u128, u128) {
     let share0 = rng.next_u64() as u128;
     let share1 = x.wrapping_sub(share0);
     (share0, share1)
 }
  
-// 重构秘密
 fn reconstruct_secret(share0: u128, share1: u128) -> u128 {
     share0.wrapping_add(share1)
 }
  
-// 生成固定长度的随机数字字符串并转换为u128
 fn get_random_numeric_string_as_u128(length: usize, padding: bool, rng: &mut (impl RngCore + CryptoRng)) -> u128 {
     let mut output = String::with_capacity(length);
     
-    // 确保首位不是0（padding为true时）
     if padding {
         output.push('1');
     } else {
         output.push('0');
     }
-    
-    // 生成剩余的数字
+
     for _ in 1..length {
         let digit = (rng.next_u32() % 10) as u8 + b'0';
         output.push(digit as char);
     }
     
-    // 将字符串转换为u128
     output.parse::<u128>().unwrap_or(0)
 }
  
-// Dealer角色：离线阶段密钥生成
 fn dealer_phase<const W: usize, Output: DpfOutput>(
     setup: &PsiProtocolSetup<W, Output>,
     rng: &mut (impl RngCore + CryptoRng),
 ) -> (Vec<u128>, Vec<u128>, Vec<u128>, Vec<u128>, dmpf::okvs::OkvsDmpfKey<1, W, Output>, dmpf::okvs::OkvsDmpfKey<1, W, Output>) {
     let threshold = setup.threshold;
     
-    // 1. 生成R个随机数，R > T*T
     let mut random_x: Vec<u128> = Vec::with_capacity(threshold);
     let mut random_y: Vec<u128> = Vec::with_capacity(threshold);
     
-    // 生成随机数rXi和rYj
     for _ in 0..threshold {
         random_x.push(rng.next_u64() as u128);
         random_y.push(rng.next_u64() as u128);
     }
     
-    // 2. 构建多点函数fA,B
     let mut points: Vec<(u128, Output)> = Vec::new();
     let mut alpha_set = HashSet::new();
     
     for i in 0..threshold {
         for j in 0..threshold {
-            // 计算rX_i - rY_j
             let diff = random_x[i].wrapping_sub(random_y[j]);
-            // 使用input_len位进行掩码
             let masked_diff = diff & ((1 << setup.input_len) - 1);
-            // 编码为DMPF输入：左移到高位
             let alpha = masked_diff << (128 - setup.input_len);
             
             if alpha_set.insert(alpha) {
@@ -95,13 +81,10 @@ fn dealer_phase<const W: usize, Output: DpfOutput>(
         }
     }
     
-    // 按alpha值排序
     points.sort_by_key(|p| p.0);
     
-    // 3. 使用DMPF的gen算法生成密钥k0、k1
     let (key0, key1) = setup.dmpf.try_gen(setup.input_len, &points, &mut *rng).unwrap();
     
-    // 4. 将随机数进行加法秘密分享
     let mut random_x_share0: Vec<u128> = Vec::with_capacity(threshold);
     let mut random_x_share1: Vec<u128> = Vec::with_capacity(threshold);
     let mut random_y_share0: Vec<u128> = Vec::with_capacity(threshold);
@@ -122,7 +105,6 @@ fn dealer_phase<const W: usize, Output: DpfOutput>(
     (random_x_share0, random_y_share0, random_x_share1, random_y_share1, key0, key1)
 }
  
-// 参与方角色：在线阶段计算
 fn online_phase_computation<const W: usize, Output: DpfOutput>(
     key0: &dmpf::okvs::OkvsDmpfKey<1, W, Output>,
     key1: &dmpf::okvs::OkvsDmpfKey<1, W, Output>,
@@ -135,7 +117,6 @@ fn online_phase_computation<const W: usize, Output: DpfOutput>(
     input_len: usize,
     mut rng: &mut (impl RngCore + CryptoRng),
 ) -> Vec<u128> {
-    // 在线阶段步骤1：对集合元素进行秘密分享
     let mut set_x_share0: Vec<u128> = Vec::with_capacity(set_x.len());
     let mut set_x_share1: Vec<u128> = Vec::with_capacity(set_x.len());
     let mut set_y_share0: Vec<u128> = Vec::with_capacity(set_y.len());
@@ -153,27 +134,23 @@ fn online_phase_computation<const W: usize, Output: DpfOutput>(
         set_y_share1.push(share1);
     }
     
-    // 在线阶段步骤2：计算x'i = [xi]b + [rXi]b, y'j = [yj]b + [rYj]b
     let mut x0_prime_shares: Vec<u128> = Vec::with_capacity(set_x.len());
     let mut y0_prime_shares: Vec<u128> = Vec::with_capacity(set_y.len());
     let mut x1_prime_shares: Vec<u128> = Vec::with_capacity(set_x.len());
     let mut y1_prime_shares: Vec<u128> = Vec::with_capacity(set_y.len());
     
     for i in 0..set_x.len() {
-        // 确保索引不越界，使用模运算
         let random_idx = i % random_x_share0.len();
         x0_prime_shares.push(set_x_share0[i].wrapping_add(random_x_share0[random_idx]));
         x1_prime_shares.push(set_x_share1[i].wrapping_add(random_x_share1[random_idx]));
     }
     
     for j in 0..set_y.len() {
-        // 确保索引不越界，使用模运算
         let random_idx = j % random_y_share0.len();
         y0_prime_shares.push(set_y_share0[j].wrapping_add(random_y_share0[random_idx]));
         y1_prime_shares.push(set_y_share1[j].wrapping_add(random_y_share1[random_idx]));
     }
     
-    // 在线阶段步骤3：双方重构x_i'和y_j'（交换份额后）
     let mut x_prime_reconstructed: Vec<u128> = Vec::with_capacity(set_x.len());
     let mut y_prime_reconstructed: Vec<u128> = Vec::with_capacity(set_y.len());
     
@@ -186,21 +163,16 @@ fn online_phase_computation<const W: usize, Output: DpfOutput>(
         let reconstructed = reconstruct_secret(y0_prime_shares[j], y1_prime_shares[j]);
         y_prime_reconstructed.push(reconstructed);
     }
-    
-    // 在线阶段步骤4：使用DMPF的eval算法计算[zij]b
+
     let mut results0 = Vec::new();
     let mut results1 = Vec::new();
     
     for &x_prime in &x_prime_reconstructed {
         for &y_prime in &y_prime_reconstructed {
-            // 计算xi' - yj'
             let diff = x_prime.wrapping_sub(y_prime);
-            // 使用input_len位进行掩码
             let masked_diff = diff & ((1 << input_len) - 1);
-            // 编码为DMPF输入：左移到高位
             let eval_input = masked_diff << (128 - input_len);
             
-            // 双方使用DMPF eval算法
             let mut output0 = Output::default();
             let mut output1 = Output::default();
             key0.eval(&eval_input, &mut output0);
@@ -210,11 +182,9 @@ fn online_phase_computation<const W: usize, Output: DpfOutput>(
         }
     }
     
-    // 在线阶段步骤5：重构结果并识别交集
     let mut intersection = Vec::new();
     for (i, (r0, r1)) in results0.iter().zip(results1.iter()).enumerate() {
         let sum = *r0 + *r1;
-        // 检查是否为非零值（表示在交集中）
         if sum != Node::from(0u128).into() {
             let x_idx = i / set_y.len();
             let y_idx = i % set_y.len();
@@ -228,20 +198,17 @@ fn online_phase_computation<const W: usize, Output: DpfOutput>(
     
     intersection
 }
- 
-// PSI协议方法
+
 fn psi_protocol<const W: usize, Output: DpfOutput>(
     setup: &PsiProtocolSetup<W, Output>,
     set_x: &[u128],
     set_y: &[u128],
     rng: &mut (impl RngCore + CryptoRng),
 ) -> (Vec<u128>, std::time::Duration, std::time::Duration) {
-    // ===== 离线阶段 =====
     let offline_start = Instant::now();
     let (rx0, ry0, rx1, ry1, key0, key1) = dealer_phase(setup, rng);
     let offline_duration = offline_start.elapsed();
     
-    // ===== 在线阶段 =====
     let online_start = Instant::now();
     let intersection = online_phase_computation(
         &key0, &key1, &rx0, &ry0, &rx1, &ry1,
@@ -251,8 +218,7 @@ fn psi_protocol<const W: usize, Output: DpfOutput>(
     
     (intersection, offline_duration, online_duration)
 }
- 
-// UPSI协议相关结构体
+
 struct UpsiProtocolSetup<const W: usize, Output: DpfOutput> {
     pub psi_setup: PsiProtocolSetup<W, Output>,
     pub total_set_size: usize,
@@ -269,8 +235,7 @@ impl<const W: usize, Output: DpfOutput> UpsiProtocolSetup<W, Output> {
         }
     }
 }
- 
-// 生成包含交集的测试数据
+
 fn generate_upsi_test_sets(
     total_set_size: usize,
     daily_update_size: usize,
@@ -278,7 +243,7 @@ fn generate_upsi_test_sets(
     daily_intersection_size: usize,
     rng: &mut (impl RngCore + CryptoRng),
 ) -> (Vec<u128>, Vec<u128>, Vec<u128>, Vec<u128>, Vec<u128>, Vec<u128>) {
-    const DEFAULT_LENGTH: usize = 16; // 使用16位数字字符串
+    const DEFAULT_LENGTH: usize = 16;
     
     let mut x_total_prev = Vec::with_capacity(total_set_size);
     let mut y_total_prev = Vec::with_capacity(total_set_size);
@@ -287,7 +252,6 @@ fn generate_upsi_test_sets(
     let mut initial_intersection = Vec::with_capacity(initial_intersection_size);
     let mut daily_intersection = Vec::with_capacity(daily_intersection_size);
     
-    // 生成初始交集元素
     for _ in 0..initial_intersection_size {
         let elem = get_random_numeric_string_as_u128(DEFAULT_LENGTH, true, rng);
         initial_intersection.push(elem);
@@ -295,7 +259,6 @@ fn generate_upsi_test_sets(
         y_total_prev.push(elem);
     }
     
-    // 生成初始集合的独有元素
     for _ in 0..(total_set_size - initial_intersection_size) {
         let elem = get_random_numeric_string_as_u128(DEFAULT_LENGTH, true, rng);
         x_total_prev.push(elem);
@@ -305,7 +268,6 @@ fn generate_upsi_test_sets(
         y_total_prev.push(elem);
     }
     
-    // 生成交集元素（当天更新）
     for _ in 0..daily_intersection_size {
         let elem = get_random_numeric_string_as_u128(DEFAULT_LENGTH, true, rng);
         daily_intersection.push(elem);
@@ -313,19 +275,16 @@ fn generate_upsi_test_sets(
         y_daily.push(elem);
     }
     
-    // 生成X每日更新的独有元素
     for _ in 0..(daily_update_size - daily_intersection_size) {
         let elem = get_random_numeric_string_as_u128(DEFAULT_LENGTH, true, rng);
         x_daily.push(elem);
     }
     
-    // 生成Y每日更新的独有元素
     for _ in 0..(daily_update_size - daily_intersection_size) {
         let elem = get_random_numeric_string_as_u128(DEFAULT_LENGTH, true, rng);
         y_daily.push(elem);
     }
     
-    // 打乱集合顺序
     use rand::seq::SliceRandom;
     x_total_prev.shuffle(rng);
     y_total_prev.shuffle(rng);
@@ -335,7 +294,6 @@ fn generate_upsi_test_sets(
     (x_total_prev, y_total_prev, x_daily, y_daily, initial_intersection, daily_intersection)
 }
  
-// UPSI协议实现
 fn upsi_protocol<const W: usize, Output: DpfOutput>(
     setup: &UpsiProtocolSetup<W, Output>,
     x_total_prev: &[u128],  // X_[d-1]
@@ -377,7 +335,6 @@ fn upsi_protocol<const W: usize, Output: DpfOutput>(
     (final_intersection, offline1, offline2, online1, online2)
 }
  
-// 验证UPSI协议正确性
 fn verify_upsi_correctness(
     x_total_prev: &[u128],
     y_total_prev: &[u128],
@@ -410,13 +367,11 @@ fn verify_upsi_correctness(
     computed_set == expected_set && computed_set == actual_intersection
 }
  
-// UPSI协议测试参数
 const UPSI_INPUT_LENS: [usize; 1] = [8];
 const UPSI_THRESHOLDS: [usize; 1] = [1025];
 const UPSI_TOTAL_SET_SIZES: [usize; 1] = [1024];
 const UPSI_DAILY_UPDATE_SIZES: [usize; 1] = [64];
  
-// 单次测试结果结构
 struct SingleTestResult {
     offline1_duration: std::time::Duration,
     offline2_duration: std::time::Duration,
@@ -444,7 +399,6 @@ impl SingleTestResult {
         println!("Intersection size: {}", self.intersection_size);
         println!("====================================\n");
         
-        // 保存到参数特定的文件
         let param_dir = format!("data/upsi_okvs/total_{}_daily_{}", total_set_size, daily_update_size);
         let summary_info = format!(
             "Total set size: {}, Daily update size: {}\n\
@@ -474,42 +428,35 @@ impl SingleTestResult {
     }
 }
  
-// 单次UPSI协议测试
 fn test_upsi_protocol_once(input_len: usize, threshold: usize, total_set_size: usize, daily_update_size: usize) -> SingleTestResult {
     const W: usize = 49;
     
     let setup = UpsiProtocolSetup::<W, Node>::new(input_len, threshold, total_set_size, daily_update_size);
     let mut rng = thread_rng();
     
-    // 生成初始测试数据
     let initial_intersection_size = total_set_size / 4;
     let daily_intersection_size = daily_update_size / 3;
     let (x_total_prev, y_total_prev, x_daily, y_daily, initial_intersection, daily_intersection) = 
         generate_upsi_test_sets(total_set_size, daily_update_size, initial_intersection_size, daily_intersection_size, &mut rng);
     
-    // 计算期望的总交集
     let mut expected_total_intersection = initial_intersection.clone();
     expected_total_intersection.extend(daily_intersection.clone());
     expected_total_intersection.sort_unstable();
     expected_total_intersection.dedup();
     
-    // 创建参数特定的子文件夹（保持原路径格式）
     let param_dir = format!("data/upsi_okvs/total_{}_daily_{}", total_set_size, daily_update_size);
     if !Path::new(&param_dir).exists() {
         fs::create_dir_all(&param_dir).unwrap();
     }
     
-    // 保存测试数据到参数特定的文件
     fs::write(format!("{}/expected_intersection.txt", param_dir), format!("{:?}", expected_total_intersection)).unwrap();
     fs::write(format!("{}/initial_intersection.txt", param_dir), format!("{:?}", initial_intersection)).unwrap();
     fs::write(format!("{}/daily_intersection.txt", param_dir), format!("{:?}", daily_intersection)).unwrap();
     
     println!("Starting UPSI protocol test for input_{}_threshold_{}_total_{}_daily_{}", input_len, threshold, total_set_size, daily_update_size);
     
-    // 记录总时间开始
     let total_start = Instant::now();
     
-    // 运行UPSI协议
     let (computed_intersection, offline1, offline2, online1, online2) = 
         upsi_protocol(
             &setup,
@@ -521,12 +468,10 @@ fn test_upsi_protocol_once(input_len: usize, threshold: usize, total_set_size: u
             &mut rng
         );
     
-    // 计算总时间
     let total_offline = offline1 + offline2;
     let total_online = online1 + online2;
     let total_duration = total_start.elapsed();
     
-    // 验证正确性
     let is_correct = verify_upsi_correctness(
         &x_total_prev,
         &y_total_prev,
@@ -536,10 +481,8 @@ fn test_upsi_protocol_once(input_len: usize, threshold: usize, total_set_size: u
         &expected_total_intersection
     );
     
-    // 保存结果到参数特定的文件
     fs::write(format!("{}/computed_intersection.txt", param_dir), format!("{:?}", computed_intersection)).unwrap();
     
-    // 如果验证失败，panic以提醒用户
     if !is_correct {
         panic!("UPSI protocol verification failed for input_{}_threshold_{}_total_{}_daily_{}!", input_len, threshold, total_set_size, daily_update_size);
     }
@@ -564,15 +507,10 @@ fn main() {
         for &threshold in UPSI_THRESHOLDS.iter() {
             for &total_set_size in UPSI_TOTAL_SET_SIZES.iter() {
                 for &daily_update_size in UPSI_DAILY_UPDATE_SIZES.iter() {
-                    // 确保集合大小不超过门槛值
                     if total_set_size > threshold {
                         continue;
                     }
-                    
-                    // 执行单次测试
                     let result = test_upsi_protocol_once(input_len, threshold, total_set_size, daily_update_size);
-                    
-                    // 打印并保存结果
                     result.print_and_save(total_set_size, daily_update_size);
                 }
             }

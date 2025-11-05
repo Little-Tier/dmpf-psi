@@ -6,7 +6,6 @@ use std::fs;
 use std::path::Path;
 use std::time::Instant;
  
-// PSI协议相关结构体
 struct PsiProtocolSetup<const W: usize, Output: DpfOutput> {
     pub dmpf: OkvsDmpf<1, W, Output>,
     pub input_len: usize,
@@ -24,40 +23,33 @@ impl<const W: usize, Output: DpfOutput> PsiProtocolSetup<W, Output> {
     }
 }
  
-// 加法秘密分享
 fn additive_secret_share(x: u128, rng: &mut (impl RngCore + CryptoRng)) -> (u128, u128) {
     let share0 = rng.next_u64() as u128;
     let share1 = x.wrapping_sub(share0);
     (share0, share1)
 }
- 
-// 重构秘密
+
 fn reconstruct_secret(share0: u128, share1: u128) -> u128 {
     share0.wrapping_add(share1)
 }
  
-// 生成固定长度的随机数字字符串并转换为u128
 fn get_random_numeric_string_as_u128(length: usize, padding: bool, rng: &mut (impl RngCore + CryptoRng)) -> u128 {
     let mut output = String::with_capacity(length);
     
-    // 确保首位不是0（padding为true时）
     if padding {
         output.push('1');
     } else {
         output.push('0');
     }
     
-    // 生成剩余的数字
     for _ in 1..length {
         let digit = (rng.next_u32() % 10) as u8 + b'0';
         output.push(digit as char);
     }
     
-    // 将字符串转换为u128
     output.parse::<u128>().unwrap_or(0)
 }
  
-// Dealer角色：离线阶段密钥生成
 fn dealer_phase<const W: usize, Output: DpfOutput>(
     setup: &PsiProtocolSetup<W, Output>,
     rng: &mut (impl RngCore + CryptoRng),
@@ -121,7 +113,6 @@ fn dealer_phase<const W: usize, Output: DpfOutput>(
     (random_x_share0, random_y_share0, random_x_share1, random_y_share1, key0, key1)
 }
  
-// 参与方角色：在线阶段计算（修改版：只返回交集大小）
 fn online_phase_computation<const W: usize, Output: DpfOutput>(
     key0: &dmpf::okvs::OkvsDmpfKey<1, W, Output>,
     key1: &dmpf::okvs::OkvsDmpfKey<1, W, Output>,
@@ -225,7 +216,6 @@ fn online_phase_computation<const W: usize, Output: DpfOutput>(
     intersection_count  // 返回计数而不是向量
 }
  
-// 生成包含交集的测试数据（修改为使用16位固定长度数字字符串）
 fn generate_test_sets_with_intersection(
     set_size: usize,
     intersection_size: usize,
@@ -264,15 +254,13 @@ fn generate_test_sets_with_intersection(
     
     (set_x, set_y, intersection)
 }
- 
-// 验证PSI协议正确性（验证交集大小）
+
 fn verify_psi_correctness(
     set_x: &[u128],
     set_y: &[u128],
-    computed_count: usize,  // 修改参数类型
-    expected_count: usize,  // 修改参数类型
+    computed_count: usize,
+    expected_count: usize,
 ) -> bool {
-    // 计算实际的交集大小
     let mut actual_intersection_size = 0;
     for &x in set_x {
         if set_y.contains(&x) {
@@ -280,25 +268,20 @@ fn verify_psi_correctness(
         }
     }
     
-    // 验证计算结果
     computed_count == expected_count && computed_count == actual_intersection_size
 }
- 
- 
-// PSI协议测试参数
+
 const PSI_INPUT_LENS: [usize; 1] = [8];
-const PSI_THRESHOLDS: [usize; 1] = [5];
-const PSI_SET_SIZES: [usize; 1] = [4];
- 
-// 单次测试结果结构（修改版）
+const PSI_THRESHOLDS: [usize; 1] = [10245];
+const PSI_SET_SIZES: [usize; 1] = [10240];
+
 struct SingleTestResult {
     offline_duration: std::time::Duration,
     online_duration: std::time::Duration,
     total_duration: std::time::Duration,
-    intersection_size: usize,  // 保持不变，因为存储的是大小
+    intersection_size: usize,
 }
- 
- 
+
 impl SingleTestResult {
     fn print_and_save(&self, input_len: usize, threshold: usize, set_size: usize) {
         println!("\n=== PSI Protocol Test Result ===");
@@ -312,7 +295,6 @@ impl SingleTestResult {
         println!("Intersection size: {}", self.intersection_size);
         println!("================================\n");
         
-        // 保存到参数特定的文件
         let param_dir = format!("data/psi_ca_okvs/input_{}_threshold_{}_set_{}", input_len, threshold, set_size);
         let summary_info = format!(
             "Input length: {}, Threshold: {}, Set size: {}\n\
@@ -334,48 +316,40 @@ impl SingleTestResult {
         );
         fs::write(format!("{}/timing.txt", param_dir), summary_info).unwrap();
         
-        // 保存交集大小而不是交集元素
         fs::write(format!("{}/intersection_size.txt", param_dir), format!("{}", self.intersection_size)).unwrap();
     }
 }
 
-// 单次PSI协议测试（修改版）
 fn test_psi_protocol_once(input_len: usize, threshold: usize, set_size: usize) -> SingleTestResult {
     const W: usize = 49;
     
     let setup = PsiProtocolSetup::<W, Node>::new(input_len, threshold);
     let mut rng = thread_rng();
     
-    // 生成包含交集的测试数据
     let intersection_size = set_size / 4;
     let (set_x, set_y, expected_intersection) = 
         generate_test_sets_with_intersection(set_size, intersection_size, &mut rng);
     
-    // 创建参数特定的子文件夹
     let param_dir = format!("data/psi_ca_okvs/input_{}_threshold_{}_set_{}", input_len, threshold, set_size);
     if !Path::new(&param_dir).exists() {
         fs::create_dir_all(&param_dir).unwrap();
     }
     
-    // 保存期望的交集大小而不是具体元素
     fs::write(format!("{}/expected_intersection_size.txt", param_dir), 
              format!("{}", expected_intersection.len())).unwrap();
     
     println!("Starting PSI protocol test for input_{}_threshold_{}_set_{}", input_len, threshold, set_size);
     
-    // 记录总时间开始
     let total_start = Instant::now();
     
-    // ===== 离线阶段 =====
     let offline_start = Instant::now();
     let (rx0, ry0, rx1, ry1, key0, key1) = dealer_phase(&setup, &mut rng);
     let offline_duration = offline_start.elapsed();
     println!("Offline phase completed in {:.2}ms", offline_duration.as_nanos() as f64 / 1_000_000.0);
     
-    // ===== 在线阶段 =====
     let online_start = Instant::now();
     
-    let computed_count = online_phase_computation(  // 修改变量名
+    let computed_count = online_phase_computation( 
         &key0, &key1, &rx0, &ry0, &rx1, &ry1,
         &set_x, &set_y, input_len, &mut rng
     );
@@ -383,17 +357,13 @@ fn test_psi_protocol_once(input_len: usize, threshold: usize, set_size: usize) -
     let online_duration = online_start.elapsed();
     println!("Online phase completed in {:.2}ms", online_duration.as_nanos() as f64 / 1_000_000.0);
     
-    // 记录总时间结束
     let total_duration = total_start.elapsed();
     
-    // 验证正确性
     let is_correct = verify_psi_correctness(&set_x, &set_y, computed_count, expected_intersection.len());
     
-    // 保存计算结果
     fs::write(format!("{}/computed_intersection_size.txt", param_dir), 
              format!("{}", computed_count)).unwrap();
     
-    // 如果验证失败，panic以提醒用户
     if !is_correct {
         panic!("PSI protocol verification failed for input_{}_threshold_{}_set_{}!", input_len, threshold, set_size);
     }
@@ -404,7 +374,7 @@ fn test_psi_protocol_once(input_len: usize, threshold: usize, set_size: usize) -
         offline_duration,
         online_duration,
         total_duration,
-        intersection_size: computed_count,  // 使用计算的大小
+        intersection_size: computed_count,
     }
 }
  
@@ -413,15 +383,12 @@ fn main() {
     for &input_len in PSI_INPUT_LENS.iter() {
         for &threshold in PSI_THRESHOLDS.iter() {
             for &set_size in PSI_SET_SIZES.iter() {
-                // 确保集合大小不超过门槛值
                 if set_size > threshold {
                     continue;
                 }
                 
-                // 执行单次测试
                 let result = test_psi_protocol_once(input_len, threshold, set_size);
                 
-                // 打印并保存结果
                 result.print_and_save(input_len, threshold, set_size);
             }
         }
