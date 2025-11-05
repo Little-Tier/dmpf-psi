@@ -1,78 +1,84 @@
 # DMPF-PSI
 
-一个基于分布式多点函数（DMPF）的PSI协议实现，同时也支持可更新场景下PSI的实现。
+An implementation of PSI protocols based on Distributed Multi-Point Functions (DMPF), also supporting PSI in updatable scenarios.
 
-## ⚠️ 警告
+## ⚠️ Warning
 
-**本仓库是一个研究原型**，旨在演示我们的基于DMPF的PSI和UPSI协议的性能并展示其功能，仅应用于实验或研发目的，它并非"生产就绪"版本。
+This repository is a research prototype designed to demonstrate the performance and showcase the functionality of our DMPF-based PSI and UPSI protocols. It is intended for experimental or research purposes only and is **NOT** intended to be considered as "production-ready".
 
-## 🌟 功能特性
 
-### 基于多种DMPF的PSI实现
+## 🌟 Features
 
-支持四种DMPF实现方案：
-- **DPF DMPF**：基于分布式点函数的基础实现
-- **Batch Code DMPF**：批处理编码优化的实现  
-- **Big-State DMPF**：大状态管理的实现
-- **OKVS DMPF**：基于Oblivious Key-Value Store的实现
+### Multiple DMPF-based PSI Implementations
 
-### PSI功能扩展
-- **PSI**：普通PSI，允许双方计算其集合的交集，而不泄露任何额外信息
-- **PSI-CA**：PSI-Cardinality，用于计算两个集合的交集的大小
-- **PSI-Sum**：计算交集中元素关联的值的总和
+Supports four DMPF-based PSI implementation schemes:
+- **DPF DMPF**: Basic implementation based on Distributed Point Functions
+- **Batch Code DMPF**: Implementation optimized with batch coding
+- **Big-State DMPF**: Implementation with Big-state DMPF
+- **OKVS DMPF**: Implementation based on Oblivious Key-Value Store
 
-### 基于DMPF的UPSI实现
-- 基于DMPF实现的UPSI及UPSI-CA、UPSI-Sum等拓展功能
-- 完整的性能测试和正确性验证
+### PSI Extended Functionalities
+- **PSI**: Standard Private Set Intersection, allowing two parties to compute the intersection of their sets without revealing any additional information
+- **PSI-CA**: PSI-Cardinality, used to calculate the size of the intersection between two sets
+- **PSI-Sum**: Computes the sum of values associated with elements in the intersection
 
-### 优化特性
-- 离线/在线两阶段优化设计
-- 完整的性能测试和正确性验证
+### Optimization Features
+- Two-phase optimization design (offline/online)
+- Complete performance testing and correctness verification
 
-## 🛠️ 安装
+### DMPF-based UPSI Implementation
+- UPSI and extensions including UPSI-CA and UPSI-Sum, implemented based on DMPF
+- Comprehensive performance evaluations and correctness verification
 
-### 先决条件
-- Rust 1.70+
-- CMake 3.10+
 
-### 构建项目
+## 🛠️ Building Locally
+
+### Prerequisites
+```bash
+Rust nightly (automatically managed via rust-toolchain.toml)
+├── Cargo (package manager, installed with Rust)
+└── rustc (compiler, installed with Rust)
+```
+
+
+### Building the Project
 ```bash
 git clone https://github.com/Little-Tier/dmpf-psi.git
 cd dmpf-psi-main
 cargo build --release
 ```
 
-## 📊 基准测试
-所有基准测试位于benches目录中。
+## 📊 Benchmarking
+All benchmarks are located in the ```benches``` directory.
 
-### PSI基准测试
-可以在代码中更改**PSI_SET_SIZES**来调整测试集合大小进行基准测试。
+### PSI Benchmarks
+You can modify **PSI_SET_SIZES** in the code to adjust test set sizes for benchmarking.
 
-- **基础PSI测试：**：
+- **Basic PSI Tests:**
 ```bash
-cargo bench --bench psi_okvs        # 基于OKVS-based DMPF的PSI基准测试
-cargo bench --bench psi_big_state   # 基于Big-state DMPF的PSI基准测试  
-cargo bench --bench psi_dpf         # 基于DPF-based DMPF的PSI基准测试
-cargo bench --bench psi_batch_code  # 基于PBC-based DMPF的PSI基准测试
+cargo bench --bench psi_okvs        # PSI benchmark based on OKVS-based DMPF
+cargo bench --bench psi_big_state   # PSI benchmark based on Big-state DMPF
+cargo bench --bench psi_dpf         # PSI benchmark based on DPF-based DMPF
+cargo bench --bench psi_batch_code  # PSI benchmark based on PBC-based DMPF
 ```
 
-- **PSI扩展功能测试：**
+- **PSI Extension Tests:**
 ```bash
-cargo bench --bench psi_ca_okvs     # 基于OKVS-based DMPF的PSI-CA基准测试
-cargo bench --bench psi_sum_okvs    # 基于OKVS-based DMPF的PSI-Sum基准测试
+cargo bench --bench psi_ca_okvs     # PSI-CA benchmark based on OKVS-based DMPF
+cargo bench --bench psi_sum_okvs    # PSI-Sum benchmark based on OKVS-based DMPF
 ```
 
-### UPSI基准测试
-对于如N=2<sup>16</sup>, N<sub>d</sub>=2<sup>6</sup> 的情况，我们希望在输入集总基数达到N的当天运行该协议，而不是模拟所有的2<sup>16</sup>/2<sup>6</sup>=1024天。我们在UPSI的基准测试中模拟的是第1023天到第1024天的更新。
+### UPSI Benchmarks
+For scenarios such as N=2<sup>16</sup>, N<sub>d</sub>=2<sup>6</sup>, we want to run the protocol on the day when the total input set cardinality reaches N, rather than simulating all 2<sup>16</sup>/2<sup>6</sup>=1024 days. Our UPSI benchmarks simulate the update from day 1023 to day 1024.
 
-可以在代码中更改**UPSI_TOTAL_SET_SIZES**和**UPSI_DAILY_UPDATE_SIZES**来调整测试总集合大小和更新集合大小进行基准测试。
+You can modify **UPSI_TOTAL_SET_SIZES** and **UPSI_DAILY_UPDATE_SIZES** in the code to adjust the total set size and update set size for benchmarking.
 
-- **UPSI测试：**
+- **UPSI Tests:**
 ```bash
-cargo bench --bench upsi_okvs       # 基于OKVS-based DMPF的UPSI基准测试
-cargo bench --bench upsi_ca_okvs    # 基于OKVS-based DMPF的UPSI-CA基准测试
-cargo bench --bench upsi_sum_okvs   # 基于OKVS-based DMPF的UPSI-Sum基准测试
+cargo bench --bench upsi_okvs       # UPSI benchmark based on OKVS-based DMPF
+cargo bench --bench upsi_ca_okvs    # UPSI-CA benchmark based on OKVS-based DMPF
+cargo bench --bench upsi_sum_okvs   # UPSI-Sum benchmark based on OKVS-based DMPF
 ```
 
-## 📈 测试结果
-上述所有测试结果保存在data目录中，可以查看离线/在线的运行时间、交集计算结果、正确性验证等信息。
+## 📈 Test Results
+All test results mentioned above are saved in the ```data``` directory, where you can view offline/online runtime, intersection calculation results, correctness verification information, and more.
