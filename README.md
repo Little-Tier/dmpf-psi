@@ -49,7 +49,10 @@ cargo build --release
 ```
 
 ## 📊 Benchmarking
-All benchmarks are located in the ```benches``` directory.
+
+**Implementation Note:** The core DMPF implementations in this repository are based on the foundational work from the https://github.com/MatanHamilis/dmpf.git. Our contributions focus on the benchmarking infrastructure and performance evaluation framework.
+
+All benchmarks are located in the `benches` directory.
 
 ### PSI Benchmarks
 You can modify **PSI_SET_SIZES** in the code to adjust test set sizes for benchmarking.
@@ -81,4 +84,4 @@ cargo bench --bench upsi_sum_okvs   # UPSI-Sum benchmark based on OKVS-based DMP
 ```
 
 ## 📈 Test Results
-All test results mentioned above are saved in the ```data``` directory, where you can view offline/online runtime, intersection calculation results, correctness verification information, and more.
+All test results mentioned above are saved in the `data` directory, where you can view offline/online runtime, intersection calculation results, correctness verification information, and more.
